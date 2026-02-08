@@ -1,0 +1,12 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+.env
+*.json
+!config/*.csv
+logs/*.jsonl
+output/*.json
+.pytest_cache/
+.coverage
+htmlcov/
