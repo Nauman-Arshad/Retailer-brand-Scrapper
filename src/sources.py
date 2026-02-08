@@ -1,14 +1,10 @@
-"""
-Load and validate retailer list from CSV.
-Provides pilot subset (10 retailers) and full list with brand-list URLs.
-"""
+"""Load retailer list from CSV; pilot subset and full list."""
 from __future__ import annotations
 
 import csv
 from pathlib import Path
 from typing import NamedTuple
 
-# Default path relative to project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONFIG_DIR = PROJECT_ROOT / "config"
 RETAILERS_CSV = CONFIG_DIR / "retailers.csv"
@@ -36,9 +32,6 @@ def _is_valid_brand_list_url(url: str) -> bool:
 
 
 def load_retailers(csv_path: Path | None = None) -> list[Retailer]:
-    """
-    Load retailers from CSV. Drops rows without a valid brand_list_url.
-    """
     path = csv_path or RETAILERS_CSV
     if not path.exists():
         return []
@@ -69,8 +62,7 @@ def load_retailers(csv_path: Path | None = None) -> list[Retailer]:
     return retailers
 
 
-# Domains that often return 403 / block scrapers — try these last so limit=1 still gets data
-_TRY_LAST_DOMAINS = frozenset({"24s.com", "aesthet.com"})
+_TRY_LAST_DOMAINS = frozenset({""})
 
 
 def get_pilot_retailers(

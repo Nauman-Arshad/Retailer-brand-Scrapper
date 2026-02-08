@@ -16,7 +16,7 @@ cp .env.example .env
 source .venv/bin/activate && python serve.py
 ```
 
-**Single retailer — POST /scrape** (default 500 brands)
+**Single retailer — POST /scrape** (default 180 brands)
 ```bash
 curl -s -X POST http://localhost:5000/scrape \
   -H "Content-Type: application/json" \
@@ -48,4 +48,4 @@ Use `max_brands_per_retailer` for a limit per retailer. Do not use `max_brands` 
 ## Config
 
 - `config/retailers.csv` — optional; columns include `Retailer Name`, `Retailer_brand_list_url`, `Priority`, `Status`. Used by `run_pilot.py`.
-- `.env` — `N8N_WEBHOOK_URL`, optional `PORT`, `SCRAPER_USER_AGENT`, `SCRAPE_DELAY_MIN` / `SCRAPE_DELAY_MAX`, `PROXY_SERVER`.
+- `.env` — `N8N_WEBHOOK_URL`, optional `PORT`, `SCRAPER_USER_AGENT`, `SCRAPE_DELAY_MIN` / `SCRAPE_DELAY_MAX`, `PROXY_SERVER`, `SCRAPER_CONCURRENCY` (default 3), `SCRAPER_RETRY_BASE` / `SCRAPER_RETRY_CAP`, `SCRAPER_GATHER_CHUNK` (200), `SCRAPER_PAGE_TIMEOUT_MS`, `SCRAPER_BLOCK_CSS` (1 to block stylesheets for speed), `SCRAPER_FAST_LOAD` (1 to use `commit` instead of `domcontentloaded` — faster, may miss JS-rendered links).

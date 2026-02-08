@@ -26,14 +26,10 @@ class BrandRecord:
 
 
 def make_timestamp() -> str:
-    """ISO 8601 UTC timestamp for scrape_timestamp."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def payload_for_n8n(records: list[BrandRecord]) -> dict:
-    """
-    Structure expected by n8n: list of brand objects.
-    """
     return {
         "records": [r.to_dict() for r in records],
         "meta": {

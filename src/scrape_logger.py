@@ -1,7 +1,4 @@
-"""
-Structured logging for scrape runs: success/failure per site, brand counts, blocked/CAPTCHA.
-Logs go to logs/scrape_YYYY-MM-DD.jsonl (one file per day). Each run writes at least run_start and run_end.
-"""
+"""Structured scrape logs: logs/scrape_YYYY-MM-DD.jsonl, scrape_retries_YYYY-MM-DD.jsonl."""
 from __future__ import annotations
 
 import json
@@ -23,7 +20,6 @@ def _ts() -> str:
 
 
 def _append_log(entry: dict[str, Any], log_dir: Path | None = None) -> None:
-    """Append one JSON line to today's scrape log. Ensures something is written every run."""
     dir_ = log_dir or _ensure_log_dir()
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     log_file = dir_ / f"scrape_{date_str}.jsonl"
@@ -53,7 +49,6 @@ def log_run_end(
     success: bool = True,
     log_dir: Path | None = None,
 ) -> None:
-    """Log that a scrape run has finished. Call at the end of run_pilot."""
     entry = {
         "timestamp": _ts(),
         "event": "run_end",
@@ -72,10 +67,6 @@ def log_site_result(
     blocked_or_captcha: bool = False,
     log_dir: Path | None = None,
 ) -> None:
-    """
-    Append one line per site to a daily log file.
-    Captures: success/failure, number of brands, blocked/CAPTCHA flag, error message.
-    """
     entry: dict[str, Any] = {
         "timestamp": _ts(),
         "event": "site_result",
@@ -89,7 +80,6 @@ def log_site_result(
 
 
 def log_retry(source: str, attempt: int, reason: str, log_dir: Path | None = None) -> None:
-    """Log a retry event for a given source (to scrape_retries_YYYY-MM-DD.jsonl)."""
     dir_ = log_dir or _ensure_log_dir()
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     log_file = dir_ / f"scrape_retries_{date_str}.jsonl"

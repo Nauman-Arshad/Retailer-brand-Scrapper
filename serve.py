@@ -1,13 +1,4 @@
 #!/usr/bin/env python3
-"""
-HTTP server for the scraper.
-
-  POST /scrape         — Single retailer. Body: { "name": "...", "brand_list_url": "..." } or { "retailers": [ one item ] }. Optional: max_brands (default 500).
-  POST /scrape-multiple — Multiple retailers. Body: { "retailers": [ ... ], "max_brands_per_retailer": 50 }. Returns results_by_retailer with per-retailer errors.
-  GET  /health        — Health check.
-
-Run: python serve.py   (port 5000, or set PORT in .env)
-"""
 from __future__ import annotations
 
 import concurrent.futures
@@ -17,8 +8,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from dotenv import load_dotenv
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 
+from src.root_page import render as render_root_page
 from src.scraper import run_pilot_sync
 from src.schemas import payload_for_n8n
 
@@ -27,7 +19,7 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 app = Flask(__name__)
 
-SERVER_TIMEOUT = 115  # return before n8n 120s
+SERVER_TIMEOUT = 115
 
 
 def _parse_retailers_from_body() -> list[SimpleNamespace]:
@@ -50,22 +42,16 @@ def _parse_retailers_from_body() -> list[SimpleNamespace]:
 
 
 def _parse_single_retailer() -> SimpleNamespace | None:
-    """
-    Parse one retailer from body for POST /scrape.
-    Accepts: { "name": "...", "brand_list_url": "..." }  or  { "retailers": [ { "name", "brand_list_url" } ] }.
-    Returns one SimpleNamespace or None.
-    """
+    """Parse one retailer from body. Accepts single object or retailers[0]. Returns None if invalid."""
     if not request.is_json or not isinstance(request.json, dict):
         return None
     body = request.json
-    # Single object with brand_list_url
     if "brand_list_url" in body:
         url = (body.get("brand_list_url") or "").strip()
         if not url or url.lower() in ("n/a", "https://n/a"):
             return None
         name = (body.get("name") or "").strip() or "Retailer"
         return SimpleNamespace(name=name, brand_list_url=url)
-    # Array with one item
     retailers = _parse_retailers_from_body()
     if len(retailers) == 1:
         return retailers[0]
@@ -77,9 +63,7 @@ def _run_scraper(
     max_brands: int | None = None,
     max_brands_per_retailer: int | None = None,
 ) -> tuple[list, bool, dict[str, str]]:
-    """
-    Run scraper with timeout. Returns (records, timed_out, errors_by_source).
-    """
+    """Run scraper with timeout. Returns (records, timed_out, errors_by_source)."""
     shared_records: list = []
     shared_errors: dict[str, str] = {}
 
@@ -109,16 +93,9 @@ def _run_scraper(
     return records, timed_out, shared_errors
 
 
-# ---------- Single retailer: POST /scrape ----------
-
-
 @app.route("/scrape", methods=["POST"])
 def scrape_single():
-    """
-    Scrape one retailer only.
-    Body: { "name": "Beymen", "brand_list_url": "https://..." }  or  { "retailers": [ { "name", "brand_list_url" } ] }.
-    Optional: "max_brands" (default 500 when omitted).
-    """
+    """Scrape one retailer. Body: name, brand_list_url (or retailers[0]). Optional: max_brands (default 180)."""
     try:
         retailer = _parse_single_retailer()
         if retailer is None:
@@ -130,7 +107,7 @@ def scrape_single():
             }), 200
 
         body = request.json if request.is_json and isinstance(request.json, dict) else {}
-        max_brands = 500  # default for single
+        max_brands = 180
         if "max_brands" in body:
             try:
                 v = int(body["max_brands"])
@@ -267,6 +244,10 @@ def health():
     return jsonify({"status": "ok"}), 200
 
 
+@app.route("/", methods=["GET"])
+def root():
+    return Response(render_root_page(request.url_root), mimetype="text/html; charset=utf-8")
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
