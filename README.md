@@ -45,6 +45,9 @@ curl -s -X POST http://localhost:5000/scrape-multiple \
 ```
 Use `max_brands_per_retailer` for a limit per retailer. Do not use `max_brands` for multiple if you want N brands each — `max_brands` caps the total across all retailers.
 
+**Pagination (n8n)**  
+You send the same POST body as before (e.g. one `brand_list_url`). The server automatically follows “next” links on the site (e.g. page 2, 3…) and returns one combined list of brands. No extra parameters or loops in n8n. Limit how far it goes with `max_brands` or server env `SCRAPER_MAX_PAGES` (default 10 pages per URL).
+
 **Reliability report — GET /reliability**  
 Returns scraping stats from logs (by source: runs, success_rate_pct, total_brands, blocked_count). Optional: `?days=7` for last 7 days.
 ```bash

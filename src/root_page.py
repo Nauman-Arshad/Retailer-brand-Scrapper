@@ -55,11 +55,11 @@ ROOT_HTML = """<!DOCTYPE html>
       </div>
       <div class="card">
         <h3><span class="method post">POST</span> <code>{base}/scrape</code></h3>
-        <p>Single retailer. Body: <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code> (default 180).</p>
+        <p>Single retailer. Body: <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code> (default 180). Pagination is automatic: server follows “next” links and returns one combined list.</p>
       </div>
       <div class="card">
         <h3><span class="method post">POST</span> <code>{base}/scrape-multiple</code></h3>
-        <p>Multiple retailers. Body: <code>retailers[]</code> with <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code>, <code>max_brands_per_retailer</code>.</p>
+        <p>Multiple retailers. Body: <code>retailers[]</code> with <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code>, <code>max_brands_per_retailer</code>. Pagination is automatic per URL.</p>
       </div>
     </section>
 
@@ -73,6 +73,7 @@ ROOT_HTML = """<!DOCTYPE html>
         <li>Resource blocking (images/fonts/media) for faster loads</li>
         <li>Exponential backoff and configurable timeouts</li>
         <li>Structured logs (JSONL) and n8n-ready payloads</li>
+        <li>Automatic pagination (follows next page links; no extra n8n steps)</li>
       </ul>
     </section>
 
