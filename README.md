@@ -1,7 +1,5 @@
 # Retailer Scraping Engine
 
-Scrape retailer brand-list pages, normalize brand names, and return structured JSON. Use from CLI or via HTTP for n8n.
-
 ## Setup
 
 ```bash
@@ -13,21 +11,39 @@ cp .env.example .env
 ```
 
 ## Commands
-
-**Run scraper (CSV retailers → JSON + optional n8n webhook)**  
-```bash
-source .venv/bin/activate && python run_pilot.py
-```
-- Default: 10 retailers. Override: `python run_pilot.py --limit 5` or `python run_pilot.py --max-brands 100`
-- Output: `output/pilot_brands.json`, logs: `logs/scrape_YYYY-MM-DD.jsonl`
-- Set `N8N_WEBHOOK_URL` in `.env` to push to n8n
-
 **Run HTTP server (for n8n)**  
 ```bash
 source .venv/bin/activate && python serve.py
 ```
-- Port 5000. POST `/scrape` with body: `{ "retailers": [ { "name": "...", "brand_list_url": "https://..." } ], "max_brands": 100 }`. GET `/health` for health check.
-- In n8n set HTTP Request timeout to 120s. Single retailer defaults to 100 brands so the response returns in time.
+
+**Single retailer — POST /scrape** (default 500 brands)
+```bash
+curl -s -X POST http://localhost:5000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Beymen", "brand_list_url": "https://www.beymen.com/tr/markalar-1849"}'
+```
+
+**Single retailer with limit**
+```bash
+curl -s -X POST http://localhost:5000/scrape \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Beymen", "brand_list_url": "https://www.beymen.com/tr/markalar-1849", "max_brands": 100}'
+```
+
+**Multiple retailers — POST /scrape-multiple** (e.g. 20 brands per retailer)
+```bash
+curl -s -X POST http://localhost:5000/scrape-multiple \
+  -H "Content-Type: application/json" \
+  -d '{
+    "retailers": [
+      {"name": "24S", "brand_list_url": "https://www.24s.com/en-fr/designers"},
+      {"name": "25 South Boutiques", "brand_list_url": "https://www.25southboutiques.com/pages/brands"},
+      {"name": "3 Suisses", "brand_list_url": "https://www.3suisses.fr/C-76591-toutes-les-marques.htm"}
+    ],
+    "max_brands_per_retailer": 20
+  }'
+```
+Use `max_brands_per_retailer` for a limit per retailer. Do not use `max_brands` for multiple if you want N brands each — `max_brands` caps the total across all retailers.
 
 ## Config
 

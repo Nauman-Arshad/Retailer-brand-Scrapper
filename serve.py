@@ -1,20 +1,18 @@
 #!/usr/bin/env python3
 """
-HTTP server so n8n can trigger the scraper by passing a retailers array.
+HTTP server for the scraper.
 
-Endpoint:
-  POST /scrape   Body: { "retailers": [ { "name": "...", "brand_list_url": "..." }, ... ] }
+  POST /scrape         — Single retailer. Body: { "name": "...", "brand_list_url": "..." } or { "retailers": [ one item ] }. Optional: max_brands (default 500).
+  POST /scrape-multiple — Multiple retailers. Body: { "retailers": [ ... ], "max_brands_per_retailer": 50 }. Returns results_by_retailer with per-retailer errors.
+  GET  /health        — Health check.
 
-No CSV in the project; no limit param. You pass the exact list of retailers to scrape.
-Returns full result in response body (no webhook push).
-
-Run: python serve.py
-Default port: 5000 (set PORT env to override)
+Run: python serve.py   (port 5000, or set PORT in .env)
 """
 from __future__ import annotations
 
 import concurrent.futures
 import os
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -29,12 +27,11 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 app = Flask(__name__)
 
+SERVER_TIMEOUT = 115  # return before n8n 120s
 
-def _parse_retailers() -> list[SimpleNamespace]:
-    """
-    Read retailers from POST body: { "retailers": [ { "name": "...", "brand_list_url": "..." }, ... ] }.
-    Returns list of objects with .name and .brand_list_url; skips items without brand_list_url.
-    """
+
+def _parse_retailers_from_body() -> list[SimpleNamespace]:
+    """Read retailers from body.retailers array. Returns list of { name, brand_list_url }."""
     if not request.is_json or not isinstance(request.json, dict):
         return []
     raw = request.json.get("retailers")
@@ -52,44 +49,48 @@ def _parse_retailers() -> list[SimpleNamespace]:
     return out
 
 
-@app.route("/scrape", methods=["POST"])
-def scrape():
+def _parse_single_retailer() -> SimpleNamespace | None:
     """
-    Run scraper on posted retailers. Can take several minutes.
-    In n8n HTTP Request node: set Timeout to 300 (seconds) or higher so the request does not time out.
-    Optional body: "max_brands": 100 to stop after 100 brands and return sooner.
+    Parse one retailer from body for POST /scrape.
+    Accepts: { "name": "...", "brand_list_url": "..." }  or  { "retailers": [ { "name", "brand_list_url" } ] }.
+    Returns one SimpleNamespace or None.
     """
-    retailers = _parse_retailers()
-    if not retailers:
-        return jsonify({
-            "ok": False,
-            "error": "No retailers provided. Send JSON body: { \"retailers\": [ { \"name\": \"...\", \"brand_list_url\": \"https://...\" } ] }",
-            "retailers_run": 0,
-            "records": [],
-            "meta": {"count": 0},
-        }), 200
+    if not request.is_json or not isinstance(request.json, dict):
+        return None
+    body = request.json
+    # Single object with brand_list_url
+    if "brand_list_url" in body:
+        url = (body.get("brand_list_url") or "").strip()
+        if not url or url.lower() in ("n/a", "https://n/a"):
+            return None
+        name = (body.get("name") or "").strip() or "Retailer"
+        return SimpleNamespace(name=name, brand_list_url=url)
+    # Array with one item
+    retailers = _parse_retailers_from_body()
+    if len(retailers) == 1:
+        return retailers[0]
+    return None
 
-    # Cap brands so response returns before n8n timeout (default 100 when single retailer)
-    max_brands = None
-    if request.is_json and isinstance(request.json, dict):
-        if "max_brands" in request.json:
-            try:
-                max_brands = int(request.json["max_brands"])
-                if max_brands < 1:
-                    max_brands = None
-            except (TypeError, ValueError):
-                pass
-        # Single retailer + no max_brands → default 100 so n8n gets a quick response
-        if max_brands is None and len(retailers) == 1:
-            max_brands = 100
 
-    # Shared list so we can return partial result on timeout
+def _run_scraper(
+    retailers: list[SimpleNamespace],
+    max_brands: int | None = None,
+    max_brands_per_retailer: int | None = None,
+) -> tuple[list, bool, dict[str, str]]:
+    """
+    Run scraper with timeout. Returns (records, timed_out, errors_by_source).
+    """
     shared_records: list = []
+    shared_errors: dict[str, str] = {}
+
     def _progress(_src: str, _n: int, _err: str | None, records_so_far: list, _idx: int, _total: int) -> None:
         shared_records.clear()
         shared_records.extend(records_so_far)
+        if _n == 0 and _err:
+            shared_errors[_src] = _err
+        elif _n > 0 and _src in shared_errors:
+            del shared_errors[_src]
 
-    server_timeout = 115  # return before n8n 120s so connection doesn't abort
     timed_out = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
         future = ex.submit(
@@ -97,18 +98,141 @@ def scrape():
             retailers,
             max_retries=2,
             max_brands=max_brands,
+            max_brands_per_retailer=max_brands_per_retailer,
             progress_callback=_progress,
         )
         try:
-            records = future.result(timeout=server_timeout)
+            records = future.result(timeout=SERVER_TIMEOUT)
         except concurrent.futures.TimeoutError:
             timed_out = True
             records = list(shared_records)
-    # Never return more than max_brands (keeps response small and under n8n timeout)
+    return records, timed_out, shared_errors
+
+
+# ---------- Single retailer: POST /scrape ----------
+
+
+@app.route("/scrape", methods=["POST"])
+def scrape_single():
+    """
+    Scrape one retailer only.
+    Body: { "name": "Beymen", "brand_list_url": "https://..." }  or  { "retailers": [ { "name", "brand_list_url" } ] }.
+    Optional: "max_brands" (default 500 when omitted).
+    """
+    retailer = _parse_single_retailer()
+    if retailer is None:
+        return jsonify({
+            "ok": False,
+            "error": "Single retailer required. Send { \"name\": \"...\", \"brand_list_url\": \"https://...\" } or { \"retailers\": [ one item ] }. For multiple retailers use POST /scrape-multiple.",
+            "records": [],
+            "meta": {"count": 0},
+        }), 200
+
+    body = request.json if request.is_json and isinstance(request.json, dict) else {}
+    max_brands = 500  # default for single
+    if "max_brands" in body:
+        try:
+            v = int(body["max_brands"])
+            if v >= 1:
+                max_brands = v
+        except (TypeError, ValueError):
+            pass
+
+    retailers = [retailer]
+    records, timed_out, shared_errors = _run_scraper(retailers, max_brands=max_brands, max_brands_per_retailer=None)
     if max_brands is not None and len(records) > max_brands:
         records = records[:max_brands]
+
     payload = payload_for_n8n(records)
     payload["meta"]["partial_timeout"] = timed_out
+
+    out = {
+        "ok": True,
+        "brands_extracted": len(records),
+        "partial_timeout": timed_out,
+        "records": payload["records"],
+        "meta": payload["meta"],
+    }
+    if len(records) == 0 and retailer.name in shared_errors:
+        out["error"] = shared_errors[retailer.name]
+    elif len(records) == 0 and timed_out:
+        out["error"] = "Server timeout before any brands returned"
+    return jsonify(out), 200
+
+
+# ---------- Multiple retailers: POST /scrape-multiple ----------
+
+
+@app.route("/scrape-multiple", methods=["POST"])
+def scrape_multiple():
+    """
+    Scrape multiple retailers. Body: { "retailers": [ { "name", "brand_list_url" }, ... ] }.
+    Optional: "max_brands" (total cap), "max_brands_per_retailer" (e.g. 50 per retailer).
+    Returns results_by_retailer (each with brands[] and optional error).
+    """
+    retailers = _parse_retailers_from_body()
+    if not retailers:
+        return jsonify({
+            "ok": False,
+            "error": "No retailers provided. Send { \"retailers\": [ { \"name\": \"...\", \"brand_list_url\": \"https://...\" }, ... ] }",
+            "retailers_run": 0,
+            "records": [],
+            "results_by_retailer": [],
+            "meta": {"count": 0},
+        }), 200
+
+    if len(retailers) == 1:
+        return jsonify({
+            "ok": False,
+            "error": "For a single retailer use POST /scrape instead of POST /scrape-multiple.",
+            "retailers_run": 0,
+            "records": [],
+            "results_by_retailer": [],
+            "meta": {"count": 0},
+        }), 200
+
+    body = request.json if request.is_json and isinstance(request.json, dict) else {}
+    max_brands = None
+    max_brands_per_retailer = None
+    if "max_brands" in body:
+        try:
+            v = int(body["max_brands"])
+            if v >= 1:
+                max_brands = v
+        except (TypeError, ValueError):
+            pass
+    if "max_brands_per_retailer" in body:
+        try:
+            v = int(body["max_brands_per_retailer"])
+            if v >= 1:
+                max_brands_per_retailer = v
+        except (TypeError, ValueError):
+            pass
+
+    records, timed_out, shared_errors = _run_scraper(
+        retailers, max_brands=max_brands, max_brands_per_retailer=max_brands_per_retailer
+    )
+    if max_brands_per_retailer is None and max_brands is not None and len(records) > max_brands:
+        records = records[:max_brands]
+
+    payload = payload_for_n8n(records)
+    payload["meta"]["partial_timeout"] = timed_out
+
+    by_source: dict = defaultdict(list)
+    for r in records:
+        by_source[r.source].append(r.to_dict())
+
+    results_by_retailer = []
+    for r in retailers:
+        source = r.name
+        brands = by_source.get(source, [])
+        entry = {"source": source, "brands": brands, "count": len(brands)}
+        if len(brands) == 0:
+            if source in shared_errors:
+                entry["error"] = shared_errors[source]
+            elif timed_out:
+                entry["error"] = "Not run (server timeout)"
+        results_by_retailer.append(entry)
 
     return jsonify({
         "ok": True,
@@ -116,6 +240,7 @@ def scrape():
         "brands_extracted": len(records),
         "partial_timeout": timed_out,
         "records": payload["records"],
+        "results_by_retailer": results_by_retailer,
         "meta": payload["meta"],
     }), 200
 

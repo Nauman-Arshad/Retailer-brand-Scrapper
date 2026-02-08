@@ -274,12 +274,14 @@ async def run_pilot(
     retailers: list,
     max_retries: int = 2,
     max_brands: int | None = None,
+    max_brands_per_retailer: int | None = None,
     progress_callback: Callable[[str, int, str | None, list[BrandRecord], int, int], None] | None = None,
 ) -> list[BrandRecord]:
     """
     Run scraper on a list of retailers (e.g. from get_pilot_retailers()).
     Logs each site result and retries; returns all BrandRecords.
-    If max_brands is set, stops once total records >= max_brands.
+    If max_brands is set, stops once total records >= max_brands (total cap).
+    If max_brands_per_retailer is set, each retailer returns at most that many brands (e.g. 50 per retailer).
     progress_callback(source, n_records, error, total_so_far, index, total) is called after each retailer.
     """
     all_records: list[BrandRecord] = []
@@ -336,7 +338,13 @@ async def run_pilot(
                         headers["Referer"] = base_url
                     await page.set_extra_http_headers(headers)
 
-                    need_now = (max_brands - len(all_records)) if max_brands is not None else None
+                    # Per-retailer cap (e.g. 50 each) or total cap (take only what's left)
+                    if max_brands_per_retailer is not None:
+                        need_now = max_brands_per_retailer
+                    elif max_brands is not None:
+                        need_now = max_brands - len(all_records)
+                    else:
+                        need_now = None
                     records, blocked, err = await scrape_brands_from_url(
                         page, url, source, apply_delay=(attempt == 0), max_brands_per_url=need_now
                     )
@@ -345,8 +353,8 @@ async def run_pilot(
                         last_error = err
                         last_blocked = blocked
                         continue
-                    # When max_brands is set, only take what we need so we return quickly
-                    if max_brands is not None:
+                    # Apply total cap when only max_brands (no per-retailer) is set
+                    if max_brands_per_retailer is None and max_brands is not None:
                         need = max_brands - len(all_records)
                         if need <= 0:
                             break
@@ -381,6 +389,7 @@ def run_pilot_sync(
     retailers: list,
     max_retries: int = 2,
     max_brands: int | None = None,
+    max_brands_per_retailer: int | None = None,
     progress_callback: Callable[[str, int, str | None, list[BrandRecord], int, int], None] | None = None,
 ) -> list[BrandRecord]:
     """Synchronous wrapper for run_pilot."""
@@ -389,6 +398,7 @@ def run_pilot_sync(
             retailers,
             max_retries=max_retries,
             max_brands=max_brands,
+            max_brands_per_retailer=max_brands_per_retailer,
             progress_callback=progress_callback,
         )
     )
