@@ -293,6 +293,13 @@ async def run_pilot(
         proxy_server = os.environ.get("PROXY_SERVER")
         if proxy_server:
             launch_kwargs["proxy"] = {"server": proxy_server}
+        # Required in Docker/containers (e.g. Fly.io) so Chromium can run without sandbox
+        launch_kwargs["args"] = [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+        ]
 
         browser = await p.chromium.launch(**launch_kwargs)
         context = await browser.new_context(
