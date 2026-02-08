@@ -10,9 +10,11 @@ from types import SimpleNamespace
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, Response
 
+from src.reliability import get_reliability_report
 from src.root_page import render as render_root_page
 from src.scraper import run_pilot_sync
 from src.schemas import payload_for_n8n
+from src.scrape_logger import LOG_DIR, log_run_end, log_run_start
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
@@ -75,6 +77,7 @@ def _run_scraper(
         elif _n > 0 and _src in shared_errors:
             del shared_errors[_src]
 
+    log_run_start(retailer_count=len(retailers), max_brands=max_brands or max_brands_per_retailer)
     timed_out = False
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
         future = ex.submit(
@@ -90,6 +93,11 @@ def _run_scraper(
         except concurrent.futures.TimeoutError:
             timed_out = True
             records = list(shared_records)
+    log_run_end(
+        total_brands=len(records),
+        retailers_processed=len(retailers),
+        success=not timed_out and len(shared_errors) == 0,
+    )
     return records, timed_out, shared_errors
 
 
@@ -242,6 +250,17 @@ def scrape_multiple():
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+@app.route("/reliability", methods=["GET"])
+def reliability():
+    """Return scraping reliability report from logs (by source: success rate, brands, blocked). Query: days=N to limit to last N days."""
+    try:
+        days = request.args.get("days", type=int)
+        report = get_reliability_report(logs_dir=LOG_DIR, days=days)
+        return jsonify({"ok": True, **report}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "by_source": [], "log_files": []}), 500
 
 
 @app.route("/", methods=["GET"])

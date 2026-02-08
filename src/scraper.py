@@ -6,7 +6,7 @@ import os
 import random
 import re
 from typing import Callable
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeout
 
@@ -73,6 +73,15 @@ DEFAULT_BRAND_SELECTORS = [
     '[data-brand] a, .brand-name, .designer-name',
     'a[href*="brand"], a[href*="designer"]',
 ]
+
+NEXT_PAGE_SELECTORS = [
+    'a[rel="next"]',
+    'a[aria-label="Next"]',
+    'a[aria-label="next"]',
+    '[class*="pagination"] a[rel="next"]',
+    '[class*="pager"] a[rel="next"]',
+]
+NEXT_PAGE_TEXT_RE = re.compile(r"^(next|›|»|>|suivant|weiter|volgende)$", re.I)
 
 
 def _slug_from_href(href: str) -> str | None:
@@ -181,6 +190,58 @@ async def _extract_from_locator(
     return raw
 
 
+async def _get_next_page_url(page: Page, current_url: str) -> str | None:
+    """Return absolute URL for the next pagination link, or None. Uses rel=next, aria-label, or 'Next' text."""
+    try:
+        for sel in NEXT_PAGE_SELECTORS:
+            loc = page.locator(sel)
+            if await loc.count() == 0:
+                continue
+            href = await loc.first.get_attribute("href")
+            if href and href.strip():
+                return urljoin(current_url, href.strip())
+        all_links = await page.locator("a[href]").all()
+        for el in all_links[:100]:
+            text = (await el.text_content() or "").strip()
+            if NEXT_PAGE_TEXT_RE.match(text):
+                href = await el.get_attribute("href")
+                if href and href.strip():
+                    return urljoin(current_url, href.strip())
+    except Exception:
+        pass
+    return None
+
+
+async def _extract_one_page_raw(page: Page, max_raw: int | None) -> list[str]:
+    """Extract raw brand-like strings from current page (main container + fallback)."""
+    container = await _get_main_container(page)
+    scope = container if container else page
+    raw = await _extract_from_locator(scope, DEFAULT_BRAND_SELECTORS, max_raw_items=max_raw)
+    if len(raw) < 3 or (max_raw is not None and len(raw) < max_raw):
+        all_els = await page.locator("a[href]").all()
+        if max_raw is not None:
+            all_els = all_els[: max(0, max_raw - len(raw))]
+        if all_els:
+            for start in range(0, len(all_els), GATHER_CHUNK_SIZE):
+                if max_raw is not None and len(raw) >= max_raw:
+                    break
+                chunk = all_els[start : start + GATHER_CHUNK_SIZE]
+                texts = await asyncio.gather(*[el.text_content() for el in chunk])
+                hrefs = await asyncio.gather(*[el.get_attribute("href") for el in chunk])
+                for text, href in zip(texts, hrefs):
+                    if max_raw is not None and len(raw) >= max_raw:
+                        break
+                    t = (text or "").strip()
+                    h = (href or "").strip()
+                    if BRAND_PATH_PATTERN.search(h):
+                        slug = _slug_from_href(h)
+                        if slug and _looks_like_brand(slug):
+                            raw.append(slug)
+                    elif t and _looks_like_brand(t) and not _looks_like_button_or_noise(t):
+                        raw.append(t)
+    return raw
+
+
 async def scrape_brands_from_url(
     page: Page,
     url: str,
@@ -235,34 +296,38 @@ async def scrape_brands_from_url(
             pass
 
         max_raw = (max_brands_per_url + 50) if max_brands_per_url is not None else None
-        container = await _get_main_container(page)
-        scope = container if container else page
-        raw = await _extract_from_locator(scope, DEFAULT_BRAND_SELECTORS, max_raw_items=max_raw)
+        all_raw: list[str] = await _extract_one_page_raw(page, max_raw)
 
-        if len(raw) < 3 or (max_raw is not None and len(raw) < max_raw):
-            all_els = await page.locator("a[href]").all()
-            if max_raw is not None:
-                all_els = all_els[: max(0, max_raw - len(raw))]
-            if all_els:
-                for start in range(0, len(all_els), GATHER_CHUNK_SIZE):
-                    if max_raw is not None and len(raw) >= max_raw:
-                        break
-                    chunk = all_els[start : start + GATHER_CHUNK_SIZE]
-                    texts = await asyncio.gather(*[el.text_content() for el in chunk])
-                    hrefs = await asyncio.gather(*[el.get_attribute("href") for el in chunk])
-                    for text, href in zip(texts, hrefs):
-                        if max_raw is not None and len(raw) >= max_raw:
-                            break
-                        t = (text or "").strip()
-                        h = (href or "").strip()
-                        if BRAND_PATH_PATTERN.search(h):
-                            slug = _slug_from_href(h)
-                            if slug and _looks_like_brand(slug):
-                                raw.append(slug)
-                        elif t and _looks_like_brand(t) and not _looks_like_button_or_noise(t):
-                            raw.append(t)
+        max_pages = int(os.environ.get("SCRAPER_MAX_PAGES", "10"))
+        visited = {url}
+        current_url = url
 
-        names = dedupe_brand_names(raw)
+        while True:
+            names_so_far = dedupe_brand_names(all_raw)
+            if max_brands_per_url is not None and len(names_so_far) >= max_brands_per_url:
+                break
+            if len(visited) >= max_pages:
+                break
+            next_url = await _get_next_page_url(page, current_url)
+            if not next_url or next_url in visited:
+                break
+            visited.add(next_url)
+            await _delay()
+            try:
+                resp = await page.goto(next_url, wait_until=wait_until, timeout=page_timeout)
+                if not resp or resp.status >= 400:
+                    break
+            except Exception:
+                break
+            try:
+                await page.wait_for_selector("a[href]", timeout=5000)
+            except PlaywrightTimeout:
+                pass
+            current_url = next_url
+            page_raw = await _extract_one_page_raw(page, max_raw)
+            all_raw.extend(page_raw)
+
+        names = dedupe_brand_names(all_raw)
         if max_brands_per_url is not None and len(names) > max_brands_per_url:
             names = names[:max_brands_per_url]
         ts = make_timestamp()

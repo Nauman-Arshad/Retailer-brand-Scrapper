@@ -21,7 +21,7 @@ LETTER_GROUP_PATTERN = re.compile(
 )
 
 NOISE_PHRASES = (
-    "ana sayfa",  # Turkish: Home Page
+    "ana sayfa",
     "new arrivals", "sale by brands", "shop by brand", "last chance",
     "sale items", "sale clothing", "sale shoes", "sale sweaters", "sale dress",
     "shop the look", "denim jean sale", "leather sale", "swim sale", "coat sale",

@@ -50,6 +50,10 @@ ROOT_HTML = """<!DOCTYPE html>
         <p>Health check. Returns <code>{"status": "ok"}</code>.</p>
       </div>
       <div class="card">
+        <h3><span class="method get">GET</span> <code>{base}/reliability</code></h3>
+        <p>Reliability report from logs: by_source (runs, success_rate_pct, total_brands, blocked_count). Query: <code>?days=N</code> for last N days.</p>
+      </div>
+      <div class="card">
         <h3><span class="method post">POST</span> <code>{base}/scrape</code></h3>
         <p>Single retailer. Body: <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code> (default 180).</p>
       </div>

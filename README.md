@@ -45,7 +45,14 @@ curl -s -X POST http://localhost:5000/scrape-multiple \
 ```
 Use `max_brands_per_retailer` for a limit per retailer. Do not use `max_brands` for multiple if you want N brands each — `max_brands` caps the total across all retailers.
 
+**Reliability report — GET /reliability**  
+Returns scraping stats from logs (by source: runs, success_rate_pct, total_brands, blocked_count). Optional: `?days=7` for last 7 days.
+```bash
+curl -s http://localhost:5000/reliability
+curl -s "http://localhost:5000/reliability?days=7"
+```
+
 ## Config
 
 - `config/retailers.csv` — optional; columns include `Retailer Name`, `Retailer_brand_list_url`, `Priority`, `Status`. Used by `run_pilot.py`.
-- `.env` — `N8N_WEBHOOK_URL`, optional `PORT`, `SCRAPER_USER_AGENT`, `SCRAPE_DELAY_MIN` / `SCRAPE_DELAY_MAX`, `PROXY_SERVER`, `SCRAPER_CONCURRENCY` (default 3), `SCRAPER_RETRY_BASE` / `SCRAPER_RETRY_CAP`, `SCRAPER_GATHER_CHUNK` (200), `SCRAPER_PAGE_TIMEOUT_MS`, `SCRAPER_BLOCK_CSS` (1 to block stylesheets for speed), `SCRAPER_FAST_LOAD` (1 to use `commit` instead of `domcontentloaded` — faster, may miss JS-rendered links).
+- `.env` — `N8N_WEBHOOK_URL`, optional `PORT`, `SCRAPER_USER_AGENT`, `SCRAPE_DELAY_MIN` / `SCRAPE_DELAY_MAX`, `PROXY_SERVER`, `SCRAPER_CONCURRENCY` (3), `SCRAPER_RETRY_BASE` / `SCRAPER_RETRY_CAP`, `SCRAPER_GATHER_CHUNK` (200), `SCRAPER_PAGE_TIMEOUT_MS`, `SCRAPER_BLOCK_CSS`, `SCRAPER_FAST_LOAD`, `SCRAPER_MAX_PAGES` (default 10; max pagination pages per URL).
