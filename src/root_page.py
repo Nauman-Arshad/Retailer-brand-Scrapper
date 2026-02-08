@@ -76,12 +76,6 @@ ROOT_HTML = """<!DOCTYPE html>
         <li>Automatic pagination (follows next page links; no extra n8n steps)</li>
       </ul>
     </section>
-
-    <section class="contact">
-      <h2>Contact</h2>
-      <p>For support or integration questions, reach out to your team or maintainer.</p>
-      <p style="margin-top: 0.5rem;"><a href="mailto:support@example.com">support@example.com</a></p>
-    </section>
   </div>
 </body>
 </html>"""
