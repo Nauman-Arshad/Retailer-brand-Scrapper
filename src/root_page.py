@@ -57,8 +57,8 @@ ROOT_HTML = """<!DOCTYPE html>
         <p class="tagline">Extract brand lists from retailer pages. JSON API for n8n and automation.</p>
       </div>
       <div class="top-actions">
-        <a class="btn-link primary" href="{base}/reports">Reliability report</a>
-        <a class="btn-link secondary" href="{base}/reports/logs">Live logs</a>
+        <a class="btn-link primary" href="/reports">Reliability report</a>
+        <a class="btn-link secondary" href="/reports/logs">Live logs</a>
       </div>
     </div>
 
@@ -78,7 +78,7 @@ ROOT_HTML = """<!DOCTYPE html>
       </div>
       <div class="card">
         <h3><span class="method get">GET</span> <code>{base}/logs</code></h3>
-        <p>Recent log entries for live view. Query: <code>?days=1&limit=500</code>. Used by the <a href="{base}/reports/logs">Live logs</a> page.</p>
+        <p>Recent log entries for live view. Query: <code>?days=1&limit=500</code>. Used by the <a href="/reports/logs">Live logs</a> page.</p>
       </div>
       <div class="card">
         <h3><span class="method get">GET</span> <code>{base}/scrape/status</code></h3>
@@ -162,7 +162,7 @@ REPORT_PAGE_HTML = """<!DOCTYPE html>
 <body>
   <div class="wrap">
     <div class="toolbar">
-      <a href="{base}/">← Home</a>
+      <a href="/">← Home</a>
       <div class="filter">
         <label for="days">Period:</label>
         <select id="days">
@@ -177,13 +177,12 @@ REPORT_PAGE_HTML = """<!DOCTYPE html>
   </div>
   <script>
 (function () {
-  var base = "{base}";
   function byId(id) { return document.getElementById(id); }
   function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function load() {
     var days = byId('days').value;
     byId('content').innerHTML = '<p class="muted">Loading…</p>';
-    fetch(base + '/reliability?days=' + days).then(function (r) { return r.json(); })
+    fetch('/reliability?days=' + days).then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok || !d.by_source) { byId('content').innerHTML = '<p class="load-err">Failed to load report.</p>'; return; }
         var rows = Object.keys(d.by_source).map(function (src) {
@@ -228,14 +227,13 @@ LOGS_PAGE_HTML = """<!DOCTYPE html>
 <body>
   <div class="full">
     <div class="bar">
-      <a href="{base}/">← Home</a>
+      <a href="/">← Home</a>
       <span class="muted">Live logs (auto-refresh 3s)</span>
     </div>
     <div id="logs-content" class="logs"><p class="muted">Loading…</p></div>
   </div>
   <script>
 (function () {
-  var base = "{base}";
   function byId(id) { return document.getElementById(id); }
   function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
   function render(entries) {
@@ -255,7 +253,7 @@ LOGS_PAGE_HTML = """<!DOCTYPE html>
     return html;
   }
   function load() {
-    fetch(base + '/logs?days=1&limit=500').then(function (r) { return r.json(); })
+    fetch('/logs?days=1&limit=500').then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok || !d.entries) { byId('logs-content').innerHTML = '<p class="load-err">Failed to load logs.</p>'; return; }
         byId('logs-content').innerHTML = render(d.entries);
