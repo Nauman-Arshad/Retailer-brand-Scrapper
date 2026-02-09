@@ -1,6 +1,4 @@
-"""
-Output schema for scraped brand data — matches n8n webhook expectation.
-"""
+"""Output schema for scraped brand data; compatible with n8n payloads."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,10 +24,12 @@ class BrandRecord:
 
 
 def make_timestamp() -> str:
+    """Return current UTC time in ISO format for scrape_timestamp."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def payload_for_n8n(records: list[BrandRecord]) -> dict:
+    """Build response payload with records and meta (count, scrape_timestamp)."""
     return {
         "records": [r.to_dict() for r in records],
         "meta": {

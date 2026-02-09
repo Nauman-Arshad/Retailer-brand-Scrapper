@@ -1,40 +1,46 @@
-"""Normalize and dedupe brand names; filter noise (categories, nav labels)."""
+"""Brand name normalization and noise filtering. Noise vocabulary is configurable via API (e.g. from Google Sheets)."""
 from __future__ import annotations
 
 import re
 import unicodedata
 
-
-NOISE_WORDS = frozenset({
-    "all", "brands", "designers", "shop", "view", "see", "more", "new", "sale",
-    "women", "men", "kids", "accessories", "shoes", "bags", "beauty", "home",
-    "collection", "bestseller", "trending", "clear", "filter", "sort",
-    "products", "items", "clothing", "tops", "bottoms", "dresses", "outerwear",
-    "swimwear", "loungewear", "intimates", "heels", "boots", "sandals", "sneakers",
-    "loafers", "socks", "jewelry", "belts", "scarves", "sunglasses", "rompers",
-    "jumpsuits", "arrivals", "chance", "apply", "products",
-    "ana", "sayfa",
-})
-
+DEFAULT_NOISE_WORDS = frozenset()
+DEFAULT_NOISE_PHRASES = ()
 LETTER_GROUP_PATTERN = re.compile(
     r"^[A-Za-z\u00C0-\u024F]{1,3}-[A-Za-z\u00C0-\u024F]{1,3}$", re.UNICODE
 )
 
-NOISE_PHRASES = (
-    "ana sayfa",
-    "new arrivals", "sale by brands", "shop by brand", "last chance",
-    "sale items", "sale clothing", "sale shoes", "sale sweaters", "sale dress",
-    "shop the look", "denim jean sale", "leather sale", "swim sale", "coat sale",
-    "dress sale", "shoe sale", "winter dress collection", "summer dress sale",
-    "summer shoe sale", "the blazer edit", "the boot shop", "the scarf edit",
-    "the valentine", "conditions apply", "hot for summer", "off the beaten track",
-    "printed artworks", "solid striped", "sale fw", " front", " edit",
-    "date shoes", "products", "sale fw ", "on sale", " shop",
-)
+ACTIVE_NOISE_WORDS: set[str] = set(DEFAULT_NOISE_WORDS)
+ACTIVE_NOISE_PHRASES: tuple[str, ...] = tuple(DEFAULT_NOISE_PHRASES)
+
+
+def configure_noise(extra_words: list[str] | None = None, extra_phrases: list[str] | None = None) -> None:
+    """Set active noise vocabulary from defaults plus optional lists (e.g. from request body)."""
+    global ACTIVE_NOISE_WORDS, ACTIVE_NOISE_PHRASES
+
+    words = set(DEFAULT_NOISE_WORDS)
+    if extra_words:
+        for w in extra_words:
+            if not isinstance(w, str):
+                continue
+            w = w.strip().lower()
+            if w:
+                words.add(w)
+    ACTIVE_NOISE_WORDS = words
+
+    phrases: list[str] = list(DEFAULT_NOISE_PHRASES)
+    if extra_phrases:
+        for p in extra_phrases:
+            if not isinstance(p, str):
+                continue
+            p = p.strip().lower()
+            if p:
+                phrases.append(p)
+    ACTIVE_NOISE_PHRASES = tuple(phrases)
 
 
 def strip_emoji_and_symbols(text: str) -> str:
-    """Remove emojis and non-letter symbols; keep letters, numbers, space, hyphen, apostrophe."""
+    """Remove emojis and disallowed symbols; keep letters, numbers, space, hyphen, apostrophe."""
     if not text or not isinstance(text, str):
         return ""
     text = unicodedata.normalize("NFKC", text)
@@ -55,9 +61,9 @@ def is_noise_phrase(text: str) -> bool:
     if not t or len(t) < 2:
         return True
     tl = t.lower()
-    if tl in NOISE_WORDS:
+    if tl in ACTIVE_NOISE_WORDS:
         return True
-    for phrase in NOISE_PHRASES:
+    for phrase in ACTIVE_NOISE_PHRASES:
         if phrase in tl:
             return True
     if LETTER_GROUP_PATTERN.match(t):
@@ -68,7 +74,7 @@ def is_noise_phrase(text: str) -> bool:
 
 
 def normalize_brand_name(raw: str) -> str:
-    """Full normalization; returns empty string if noise."""
+    """Normalize and filter; returns empty string if noise."""
     s = strip_emoji_and_symbols(raw)
     s = normalize_caps(s)
     s = s.strip()
@@ -80,7 +86,7 @@ def normalize_brand_name(raw: str) -> str:
 
 
 def dedupe_brand_names(names: list[str]) -> list[str]:
-    """Unique names, order preserved; empty strings removed."""
+    """Return unique normalized names, order preserved; empties removed."""
     seen: set[str] = set()
     out: list[str] = []
     for n in names:

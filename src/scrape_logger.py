@@ -1,4 +1,4 @@
-"""Structured scrape logs: logs/scrape_YYYY-MM-DD.jsonl, scrape_retries_YYYY-MM-DD.jsonl."""
+"""Structured scrape logs: logs/scrape_YYYY-MM-DD.jsonl and scrape_retries_YYYY-MM-DD.jsonl."""
 from __future__ import annotations
 
 import json
@@ -33,7 +33,7 @@ def log_run_start(
     max_brands: int | None = None,
     log_dir: Path | None = None,
 ) -> None:
-    """Log that a scrape run has started. Call at the beginning of run_pilot."""
+    """Append run_start event to daily scrape log."""
     entry = {
         "timestamp": _ts(),
         "event": "run_start",

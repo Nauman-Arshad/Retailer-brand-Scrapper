@@ -1,4 +1,4 @@
-"""Playwright scraper: brand-list URLs → normalized brand records. Generic selectors, no per-site config."""
+"""Playwright-based brand list scraper. Extracts and normalizes brand names from retailer URLs; stateless, no per-site config."""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +22,7 @@ async def _delay() -> None:
 
 
 def _retry_delay_seconds(attempt: int) -> float:
-    """Exponential backoff for retries (e.g. 1s, 2s, 4s…) with jitter and cap. attempt is 1-based for first retry."""
+    """Exponential backoff with jitter; attempt is 1-based."""
     base = float(os.environ.get("SCRAPE_RETRY_BASE", "1"))
     cap = float(os.environ.get("SCRAPE_RETRY_CAP", "30"))
     sec = min(cap, base * (2 ** attempt))
@@ -38,6 +38,8 @@ DEFAULT_USER_AGENT = (
     "AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/120.0 Safari/537.36"
 )
+
+LAST_SCRAPE_STATS: dict[str, dict[str, int]] = {}
 
 MAIN_CONTAINER_SELECTORS = [
     "main",
@@ -104,6 +106,10 @@ _LETTER_GROUP_RE = re.compile(
     r"^[A-Za-z\u00C0-\u024F]{1,3}-[A-Za-z\u00C0-\u024F]{1,3}$", re.UNICODE
 )
 
+_TRAILING_DIGITS_RE = re.compile(
+    r"^(.+[A-Za-z\u00C0-\u024F])(\d+)$", re.UNICODE
+)
+
 
 def _looks_like_button_or_noise(text: str) -> bool:
     """True if link text is likely a button/category, not a brand name."""
@@ -122,6 +128,7 @@ def _looks_like_button_or_noise(text: str) -> bool:
 
 
 def _looks_like_brand(text: str) -> bool:
+    """Return True if text passes basic brand-like checks (length, no nav keywords)."""
     t = (text or "").strip()
     if len(t) < 2 or len(t) > 80:
         return False
@@ -132,8 +139,27 @@ def _looks_like_brand(text: str) -> bool:
     return True
 
 
+def _strip_trailing_ui_counter(text: str) -> str:
+    """
+    Strip trailing digit-only UI counters that have been concatenated to brand
+    names (e.g. 'Only Maternity104' -> 'Only Maternity', 'OVS2' -> 'OVS').
+
+    The rule only applies when:
+    - Digits are directly attached at the end of the string
+    - The preceding character is a letter (so '1017 Alyx 9SM' is untouched)
+    """
+    t = (text or "").strip()
+    if not t:
+        return t
+    m = _TRAILING_DIGITS_RE.match(t)
+    if not m:
+        return t
+    prefix, _digits = m.groups()
+    return prefix.strip()
+
+
 async def _get_main_container(page: Page):
-    """First container with links from MAIN_CONTAINER_SELECTORS, or None."""
+    """Return first container from MAIN_CONTAINER_SELECTORS that contains links, or None."""
     for sel in MAIN_CONTAINER_SELECTORS:
         try:
             loc = page.locator(sel)
@@ -151,7 +177,7 @@ async def _get_main_container(page: Page):
 async def _extract_from_locator(
     page_or_container, selectors: list[str], max_raw_items: int | None = None
 ) -> list[str]:
-    """Extract brand-like strings from links; chunked parallel reads."""
+    """Extract brand-like strings from matching links (chunked)."""
     raw: list[str] = []
     seen_slugs: set[str] = set()
     for sel in selectors:
@@ -191,7 +217,7 @@ async def _extract_from_locator(
 
 
 async def _get_next_page_url(page: Page, current_url: str) -> str | None:
-    """Return absolute URL for the next pagination link, or None. Uses rel=next, aria-label, or 'Next' text."""
+    """Return absolute URL for next pagination link (rel=next, aria-label, or Next text), or None."""
     try:
         for sel in NEXT_PAGE_SELECTORS:
             loc = page.locator(sel)
@@ -326,12 +352,22 @@ async def scrape_brands_from_url(
             current_url = next_url
             page_raw = await _extract_one_page_raw(page, max_raw)
             all_raw.extend(page_raw)
+        if "aboutyou" in netloc:
+            all_raw = [_strip_trailing_ui_counter(t) for t in all_raw]
 
         names = dedupe_brand_names(all_raw)
         if max_brands_per_url is not None and len(names) > max_brands_per_url:
             names = names[:max_brands_per_url]
         ts = make_timestamp()
         records = [BrandRecord(brand=n, source=source_name, scrape_timestamp=ts) for n in names]
+        try:
+            LAST_SCRAPE_STATS[source_name] = {
+                "raw_count": len(all_raw),
+                "filtered_count": len(names),
+            }
+        except Exception:
+            pass
+
         return records, False, None
     except PlaywrightTimeout:
         return [], False, "Timeout"
@@ -357,7 +393,7 @@ async def _scrape_one_retailer(
     max_brands: int | None,
     max_retries: int,
 ) -> tuple[int, str, list[BrandRecord], str | None]:
-    """Scrape one retailer (with retries). Returns (idx, source, records, error)."""
+    """Scrape one retailer with retries. Returns (idx, source, records, error)."""
     source = r.name if hasattr(r, "name") else getattr(r, "get", lambda k, d=None: d)("name") or str(r)
     url = (
         r.brand_list_url
@@ -413,7 +449,7 @@ async def run_pilot(
     max_brands_per_retailer: int | None = None,
     progress_callback: Callable[[str, int, str | None, list[BrandRecord], int, int], None] | None = None,
 ) -> list[BrandRecord]:
-    """Run scraper on retailers; logs and retries per site. Optional: max_brands, max_brands_per_retailer, progress_callback."""
+    """Run scraper on all retailers with optional caps and progress callback."""
     all_records: list[BrandRecord] = []
     on_progress = progress_callback or _default_progress_callback
     total_retailers = len(retailers)
@@ -564,6 +600,7 @@ def run_pilot_sync(
     max_brands_per_retailer: int | None = None,
     progress_callback: Callable[[str, int, str | None, list[BrandRecord], int, int], None] | None = None,
 ) -> list[BrandRecord]:
+    """Synchronous entry point for run_pilot (used by Flask)."""
     return asyncio.run(
         run_pilot(
             retailers,

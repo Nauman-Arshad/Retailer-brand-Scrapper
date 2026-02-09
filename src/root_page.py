@@ -54,12 +54,35 @@ ROOT_HTML = """<!DOCTYPE html>
         <p>Reliability report from logs: by_source (runs, success_rate_pct, total_brands, blocked_count). Query: <code>?days=N</code> for last N days.</p>
       </div>
       <div class="card">
+        <h3><span class="method get">GET</span> <code>{base}/scrape/status</code></h3>
+        <p>Kill switch status. Returns <code>scraper_active</code>, <code>kill_switch_enabled</code>. Use to check if scraping is paused before calling POST /scrape.</p>
+      </div>
+      <div class="card">
         <h3><span class="method post">POST</span> <code>{base}/scrape</code></h3>
-        <p>Single retailer. Body: <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code> (default 180). Pagination is automatic: server follows “next” links and returns one combined list.</p>
+        <p>Single retailer. Body: <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code> (omit to scrape all brands), <code>environment</code> (<code>\"sandbox\"</code> or <code>\"production\"</code>), and <code>noise_words</code> / <code>noise_phrases</code> arrays. Pagination is automatic.</p>
       </div>
       <div class="card">
         <h3><span class="method post">POST</span> <code>{base}/scrape-multiple</code></h3>
-        <p>Multiple retailers. Body: <code>retailers[]</code> with <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code>, <code>max_brands_per_retailer</code>. Pagination is automatic per URL.</p>
+        <p>Multiple retailers. Body: <code>retailers[]</code> with <code>name</code>, <code>brand_list_url</code>. Optional: <code>max_brands</code>, <code>max_brands_per_retailer</code>, <code>environment</code>, <code>noise_words</code>, <code>noise_phrases</code>. Pagination is automatic per URL.</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>Environment & configuration</h2>
+      <div class="card">
+        <h3>Sandbox vs production</h3>
+        <p>Control scraper mode from the request body:</p>
+        <p><code>{\"environment\": \"sandbox\"}</code> → safe test runs (n8n can route to test sheets, lower limits, extra logging).</p>
+        <p><code>{\"environment\": \"production\"}</code> (or omit) → live runs (n8n routes to production sheets and monitoring).</p>
+      </div>
+      <div class="card">
+        <h3>Noise words & phrases</h3>
+        <p>Category labels like <code>Clothing</code> or <code>Handbags</code> are managed in a Google Sheet, not hard-coded.</p>
+        <p>n8n reads the <code>Scrapper Noise Words</code> tab and sends <code>noise_words</code> and <code>noise_phrases</code> arrays in the POST body so they can be edited without code changes.</p>
+      </div>
+      <div class="card">
+        <h3>Kill switch</h3>
+        <p>Pause all scraping via environment: set <code>SCRAPER_KILL_SWITCH=1</code> or <code>PAUSE_SCRAPER=true</code>. When ON, POST <code>/scrape</code> and <code>/scrape-multiple</code> return 503 and do not run. Check <code>GET {base}/scrape/status</code> for current state. Unset or set to 0/false to resume.</p>
       </div>
     </section>
 
@@ -72,7 +95,7 @@ ROOT_HTML = """<!DOCTYPE html>
         <li>Parallel retailers and chunked DOM reads</li>
         <li>Resource blocking (images/fonts/media) for faster loads</li>
         <li>Exponential backoff and configurable timeouts</li>
-        <li>Structured logs (JSONL) and n8n-ready payloads</li>
+        <li>Structured logs (JSONL) and n8n-ready payloads with raw vs filtered counts</li>
         <li>Automatic pagination (follows next page links; no extra n8n steps)</li>
       </ul>
     </section>
