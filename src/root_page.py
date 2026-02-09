@@ -185,9 +185,9 @@ REPORT_PAGE_HTML = """<!DOCTYPE html>
     fetch('/reliability?days=' + days).then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok || !d.by_source) { byId('content').innerHTML = '<p class="load-err">Failed to load report.</p>'; return; }
-        var rows = Object.keys(d.by_source).map(function (src) {
-          var s = d.by_source[src];
-          return '<tr><td>' + escapeHtml(src) + '</td><td>' + (s.runs ?? '-') + '</td><td>' + (s.success_rate_pct ?? '-') + '%</td><td>' + (s.total_brands ?? '-') + '</td><td>' + (s.blocked_count ?? '-') + '</td><td>' + escapeHtml((s.last_error || '-')) + '</td></tr>';
+        var list = Array.isArray(d.by_source) ? d.by_source : Object.keys(d.by_source).map(function (k) { var r = d.by_source[k]; r.source = r.source || k; return r; });
+        var rows = list.map(function (s) {
+          return '<tr><td>' + escapeHtml(s.source) + '</td><td>' + (s.runs ?? '-') + '</td><td>' + (s.success_rate_pct ?? '-') + '%</td><td>' + (s.total_brands ?? '-') + '</td><td>' + (s.blocked_count ?? '-') + '</td><td>' + escapeHtml((s.last_error || '-')) + '</td></tr>';
         }).join('');
         byId('content').innerHTML = '<table class="reliability-table"><thead><tr><th>Source</th><th>Runs</th><th>Success %</th><th>Brands</th><th>Blocked</th><th>Last error</th></tr></thead><tbody>' + rows + '</tbody></table>';
       })
