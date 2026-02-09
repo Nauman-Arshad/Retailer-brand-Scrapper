@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import os
 from collections import defaultdict
 from pathlib import Path
@@ -13,7 +14,7 @@ from flask import Flask, request, jsonify, Response
 
 from src.normalize import configure_noise
 from src.reliability import get_reliability_report
-from src.root_page import render as render_root_page
+from src.root_page import render as render_root_page, render_logs_page, render_report_page
 from src.scraper import LAST_SCRAPE_STATS, run_pilot_sync
 from src.schemas import payload_for_n8n
 from src.scrape_logger import LOG_DIR, log_run_end, log_run_start
@@ -343,6 +344,55 @@ def reliability():
         return jsonify({"ok": True, **report}), 200
     except Exception as e:
         return jsonify({"ok": False, "error": str(e), "by_source": [], "log_files": []}), 500
+
+
+@app.route("/logs", methods=["GET"])
+def logs():
+    """Return recent log entries for live view. Query: ?days=1&limit=500."""
+    try:
+        days = request.args.get("days", type=int) or 1
+        limit = min(1000, max(1, request.args.get("limit", type=int) or 300))
+        from datetime import datetime, timezone, timedelta
+        cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        entries: list[dict] = []
+        for path in sorted(LOG_DIR.glob("scrape_*.jsonl")):
+            if "retries" in path.name:
+                if path.name < f"scrape_retries_{cutoff}.jsonl":
+                    continue
+            else:
+                if path.name < f"scrape_{cutoff}.jsonl":
+                    continue
+            try:
+                with open(path, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        try:
+                            entry = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        entry["_file"] = path.name
+                        entries.append(entry)
+            except OSError:
+                continue
+        entries.sort(key=lambda e: e.get("timestamp", ""))
+        entries = entries[-limit:]
+        return jsonify({"ok": True, "entries": entries}), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "entries": []}), 500
+
+
+@app.route("/reports", methods=["GET"])
+def reports_page():
+    """Full-page reliability report with period filter (today / 7 / 30 days)."""
+    return Response(render_report_page(request.url_root), mimetype="text/html; charset=utf-8")
+
+
+@app.route("/reports/logs", methods=["GET"])
+def logs_page():
+    """Full-screen live logs page with auto-refresh."""
+    return Response(render_logs_page(request.url_root), mimetype="text/html; charset=utf-8")
 
 
 @app.route("/", methods=["GET"])

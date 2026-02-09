@@ -11,8 +11,11 @@ ROOT_HTML = """<!DOCTYPE html>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: "DM Sans", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; }
     .wrap { max-width: 640px; margin: 0 auto; padding: 2rem 1.5rem; }
+    .top-row { display: flex; justify-content: space-between; align-items: flex-start; gap: 1.5rem; margin-bottom: 2rem; }
+    .top-left { flex: 1 1 auto; }
+    .top-actions { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 0.5rem; justify-content: flex-end; }
     h1 { font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em; margin-bottom: 0.25rem; }
-    .tagline { color: var(--muted); font-size: 0.95rem; margin-bottom: 2rem; }
+    .tagline { color: var(--muted); font-size: 0.95rem; margin-bottom: 0.25rem; }
     section { margin-bottom: 2rem; }
     h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.75rem; }
     .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 0.5rem; }
@@ -29,6 +32,18 @@ ROOT_HTML = """<!DOCTYPE html>
     .contact p { font-size: 0.9rem; color: var(--muted); }
     .contact a { color: var(--accent); text-decoration: none; }
     .contact a:hover { text-decoration: underline; }
+    .load-err { color: #f87171; }
+    .muted { color: var(--muted); }
+    .card a { color: var(--accent); text-decoration: none; }
+    .card a:hover { text-decoration: underline; }
+    .btn-link { display: inline-flex; align-items: center; justify-content: center; padding: 0.4rem 0.9rem; border-radius: 999px; border: 1px solid var(--border); font-size: 0.85rem; font-weight: 500; text-decoration: none; cursor: pointer; white-space: nowrap; }
+    .btn-link.primary { background: var(--accent); color: #020617; border-color: transparent; }
+    .btn-link.secondary { background: transparent; color: var(--accent); }
+    .btn-link:hover { filter: brightness(1.1); }
+    @media (max-width: 640px) {
+      .top-row { flex-direction: column; align-items: stretch; }
+      .top-actions { justify-content: flex-start; }
+    }
   </style>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,8 +51,16 @@ ROOT_HTML = """<!DOCTYPE html>
 </head>
 <body>
   <div class="wrap">
-    <h1>NAIM – Brand Scraper</h1>
-    <p class="tagline">Extract brand lists from retailer pages. JSON API for n8n and automation.</p>
+    <div class="top-row">
+      <div class="top-left">
+        <h1>NAIM – Brand Scraper</h1>
+        <p class="tagline">Extract brand lists from retailer pages. JSON API for n8n and automation.</p>
+      </div>
+      <div class="top-actions">
+        <a class="btn-link primary" href="{base}/reports">Reliability report</a>
+        <a class="btn-link secondary" href="{base}/reports/logs">Live logs</a>
+      </div>
+    </div>
 
     <section>
       <h2>APIs</h2>
@@ -52,6 +75,10 @@ ROOT_HTML = """<!DOCTYPE html>
       <div class="card">
         <h3><span class="method get">GET</span> <code>{base}/reliability</code></h3>
         <p>Reliability report from logs: by_source (runs, success_rate_pct, total_brands, blocked_count). Query: <code>?days=N</code> for last N days.</p>
+      </div>
+      <div class="card">
+        <h3><span class="method get">GET</span> <code>{base}/logs</code></h3>
+        <p>Recent log entries for live view. Query: <code>?days=1&limit=500</code>. Used by the <a href="{base}/reports/logs">Live logs</a> page.</p>
       </div>
       <div class="card">
         <h3><span class="method get">GET</span> <code>{base}/scrape/status</code></h3>
@@ -104,6 +131,157 @@ ROOT_HTML = """<!DOCTYPE html>
 </html>"""
 
 
+REPORT_PAGE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reliability report – NAIM Brand Scraper</title>
+  <style>
+    :root { --bg: #0f0f12; --card: #1a1a20; --text: #e4e4e7; --muted: #71717a; --accent: #a78bfa; --border: #27272a; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "DM Sans", system-ui, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh; }
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 2rem 1.5rem; }
+    h1 { font-size: 1.5rem; font-weight: 600; margin-bottom: 1rem; }
+    .toolbar { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem; }
+    .toolbar a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+    .toolbar a:hover { color: var(--accent); }
+    .filter { display: flex; gap: 0.5rem; align-items: center; }
+    .filter label { color: var(--muted); font-size: 0.9rem; }
+    .filter select { background: var(--card); border: 1px solid var(--border); color: var(--text); padding: 0.4rem 0.75rem; border-radius: 6px; font-size: 0.9rem; cursor: pointer; }
+    .reliability-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .reliability-table th, .reliability-table td { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
+    .reliability-table th { color: var(--muted); font-weight: 500; }
+    .reliability-table tr:hover td { background: rgba(255,255,255,0.03); }
+    .load-err { color: #f87171; }
+    .muted { color: var(--muted); }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="wrap">
+    <div class="toolbar">
+      <a href="{base}/">← Home</a>
+      <div class="filter">
+        <label for="days">Period:</label>
+        <select id="days">
+          <option value="1">Today</option>
+          <option value="7" selected>Last 7 days</option>
+          <option value="30">Last 30 days</option>
+        </select>
+      </div>
+    </div>
+    <h1>Reliability report</h1>
+    <div id="content"><p class="muted">Loading…</p></div>
+  </div>
+  <script>
+(function () {
+  var base = "{base}";
+  function byId(id) { return document.getElementById(id); }
+  function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function load() {
+    var days = byId('days').value;
+    byId('content').innerHTML = '<p class="muted">Loading…</p>';
+    fetch(base + '/reliability?days=' + days).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok || !d.by_source) { byId('content').innerHTML = '<p class="load-err">Failed to load report.</p>'; return; }
+        var rows = Object.keys(d.by_source).map(function (src) {
+          var s = d.by_source[src];
+          return '<tr><td>' + escapeHtml(src) + '</td><td>' + (s.runs ?? '-') + '</td><td>' + (s.success_rate_pct ?? '-') + '%</td><td>' + (s.total_brands ?? '-') + '</td><td>' + (s.blocked_count ?? '-') + '</td><td>' + escapeHtml((s.last_error || '-')) + '</td></tr>';
+        }).join('');
+        byId('content').innerHTML = '<table class="reliability-table"><thead><tr><th>Source</th><th>Runs</th><th>Success %</th><th>Brands</th><th>Blocked</th><th>Last error</th></tr></thead><tbody>' + rows + '</tbody></table>';
+      })
+      .catch(function () { byId('content').innerHTML = '<p class="load-err">Could not load report.</p>'; });
+  }
+  byId('days').addEventListener('change', load);
+  load();
+})();
+  </script>
+</body>
+</html>"""
+
+
+LOGS_PAGE_HTML = """<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live logs – NAIM Brand Scraper</title>
+  <style>
+    :root { --bg: #0c0c0e; --text: #e4e4e7; --muted: #71717a; --accent: #a78bfa; --border: #27272a; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; font-family: ui-monospace, monospace; font-size: 0.85rem; line-height: 1.5; background: var(--bg); color: var(--text); }
+    .full { display: flex; flex-direction: column; height: 100vh; }
+    .bar { flex: 0 0 auto; padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 1rem; }
+    .bar a { color: var(--muted); text-decoration: none; }
+    .bar a:hover { color: var(--accent); }
+    .logs { flex: 1 1 auto; overflow: auto; padding: 1rem; }
+    .log-line { margin: 0.15em 0; word-break: break-all; }
+    .log-line .ts { color: var(--muted); margin-right: 0.5rem; }
+    .log-line .event { color: var(--accent); }
+    .log-line .file { color: var(--muted); font-size: 0.8em; }
+    .load-err { color: #f87171; }
+    .muted { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="full">
+    <div class="bar">
+      <a href="{base}/">← Home</a>
+      <span class="muted">Live logs (auto-refresh 3s)</span>
+    </div>
+    <div id="logs-content" class="logs"><p class="muted">Loading…</p></div>
+  </div>
+  <script>
+(function () {
+  var base = "{base}";
+  function byId(id) { return document.getElementById(id); }
+  function escapeHtml(s) { if (s == null) return ''; var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function render(entries) {
+    if (!entries || !entries.length) return '<p class="muted">No log entries.</p>';
+    var html = entries.map(function (e) {
+      var ts = e.timestamp || '';
+      var ev = e.event || '';
+      var parts = [];
+      if (ev === 'run_start') parts.push('run_start', 'retailers=' + (e.retailer_count ?? '-'), 'max_brands=' + (e.max_brands ?? '-'));
+      else if (ev === 'run_end') parts.push('run_end', 'total=' + (e.total_brands ?? '-'), 'success=' + (e.success !== false));
+      else if (ev === 'site_result') parts.push('site_result', escapeHtml(e.source || ''), (e.success ? 'ok' : 'fail'), (e.brands_count ?? 0) + ' brands', (e.blocked_or_captcha ? 'blocked' : ''), (e.error || ''));
+      else parts.push(ev || JSON.stringify(e));
+      var line = (typeof parts[0] === 'string' ? parts.join(' ') : parts[0]);
+      var file = e._file ? ' <span class="file">' + escapeHtml(e._file) + '</span>' : '';
+      return '<div class="log-line"><span class="ts">' + escapeHtml(ts) + '</span><span class="event">' + line + '</span>' + file + '</div>';
+    }).join('');
+    return html;
+  }
+  function load() {
+    fetch(base + '/logs?days=1&limit=500').then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok || !d.entries) { byId('logs-content').innerHTML = '<p class="load-err">Failed to load logs.</p>'; return; }
+        byId('logs-content').innerHTML = render(d.entries);
+        var el = byId('logs-content');
+        el.scrollTop = el.scrollHeight;
+      })
+      .catch(function () { byId('logs-content').innerHTML = '<p class="load-err">Could not load logs.</p>'; });
+  }
+  load();
+  setInterval(load, 3000);
+})();
+  </script>
+</body>
+</html>"""
+
+
 def render(base_url: str) -> str:
     """Return full HTML for the root page with base_url substituted."""
     return ROOT_HTML.replace("{base}", base_url.rstrip("/"))
+
+
+def render_report_page(base_url: str) -> str:
+    """Return full HTML for the reliability report page."""
+    return REPORT_PAGE_HTML.replace("{base}", base_url.rstrip("/"))
+
+
+def render_logs_page(base_url: str) -> str:
+    """Return full HTML for the full-screen live logs page."""
+    return LOGS_PAGE_HTML.replace("{base}", base_url.rstrip("/"))
