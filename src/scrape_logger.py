@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-LOG_DIR = PROJECT_ROOT / "logs"
+_LOG_DIR_ENV = os.environ.get("SCRAPER_LOG_DIR")
+LOG_DIR = Path(_LOG_DIR_ENV) if _LOG_DIR_ENV else (PROJECT_ROOT / "logs")
+RETAILER_STATUS_FILE = LOG_DIR / "retailer_status.json"
 
 
 def _ensure_log_dir() -> Path:
@@ -59,6 +62,42 @@ def log_run_end(
     _append_log(entry, log_dir)
 
 
+def _update_retailer_status(
+    source: str,
+    success: bool,
+    brands_count: int,
+    error: str | None,
+    log_dir: Path | None = None,
+) -> None:
+    """Update lightweight per-retailer status file for operational monitoring."""
+    dir_ = log_dir or _ensure_log_dir()
+    status_file = dir_ / RETAILER_STATUS_FILE.name
+    now = _ts()
+    stub: dict[str, Any] = {
+        "last_run": now,
+        "success": success,
+        "brand_count": brands_count,
+        "error": error,
+    }
+    try:
+        data: dict[str, Any] = {}
+        if status_file.exists():
+            try:
+                with open(status_file, encoding="utf-8") as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                data = {}
+        retailers = data.get("retailers") if isinstance(data.get("retailers"), dict) else {}
+        retailers[source] = stub
+        data["retailers"] = retailers
+        data["last_updated"] = now
+        with open(status_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.flush()
+    except OSError:
+        pass
+
+
 def log_site_result(
     source: str,
     success: bool,
@@ -77,6 +116,7 @@ def log_site_result(
         "error": error,
     }
     _append_log(entry, log_dir)
+    _update_retailer_status(source, success, brands_count, error, log_dir)
 
 
 def log_retry(source: str, attempt: int, reason: str, log_dir: Path | None = None) -> None:

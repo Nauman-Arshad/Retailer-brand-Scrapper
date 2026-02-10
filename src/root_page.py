@@ -77,6 +77,10 @@ ROOT_HTML = """<!DOCTYPE html>
         <p>Reliability report from logs: by_source (runs, success_rate_pct, total_brands, blocked_count). Query: <code>?days=N</code> for last N days.</p>
       </div>
       <div class="card">
+        <h3><span class="method get">GET</span> <code>{base}/reports/retailer-status</code></h3>
+        <p>Lightweight per-retailer execution status for operational monitoring: <code>last_run</code>, <code>success</code>, <code>brand_count</code>, <code>error</code> per retailer. Updated after each retailer run.</p>
+      </div>
+      <div class="card">
         <h3><span class="method get">GET</span> <code>{base}/logs</code></h3>
         <p>Recent log entries for live view. Query: <code>?days=1&limit=500</code>. Used by the <a href="/reports/logs">Live logs</a> page.</p>
       </div>
@@ -101,6 +105,12 @@ ROOT_HTML = """<!DOCTYPE html>
         <p>Control scraper mode from the request body:</p>
         <p><code>{\"environment\": \"sandbox\"}</code> → safe test runs (n8n can route to test sheets, lower limits, extra logging).</p>
         <p><code>{\"environment\": \"production\"}</code> (or omit) → live runs (n8n routes to production sheets and monitoring).</p>
+        <p><strong>Use sandbox when testing</strong> to avoid accidental large production runs or writing to live sheets.</p>
+      </div>
+      <div class="card">
+        <h3>Workflows: batch vs per-item</h3>
+        <p><strong>Default — batch:</strong> Call <code>POST /scrape-multiple</code> with all retailers in one request. The server runs them with internal concurrency. Prefer this for scheduled runs.</p>
+        <p><strong>Fallback — per-item:</strong> If the batch request times out (<code>partial_timeout: true</code>) or fails, the workflow can fall back to calling <code>POST /scrape</code> once per retailer in a loop. Slower but each retailer completes independently.</p>
       </div>
       <div class="card">
         <h3>Noise words & phrases</h3>
@@ -186,6 +196,10 @@ REPORT_PAGE_HTML = """<!DOCTYPE html>
       .then(function (d) {
         if (!d.ok || !d.by_source) { byId('content').innerHTML = '<p class="load-err">Failed to load report.</p>'; return; }
         var list = Array.isArray(d.by_source) ? d.by_source : Object.keys(d.by_source).map(function (k) { var r = d.by_source[k]; r.source = r.source || k; return r; });
+        if (list.length === 0) {
+          byId('content').innerHTML = '<p class="muted">No log data for this period.</p><p class="muted" style="margin-top:0.5rem;">On Fly.io, logs are written to the machine disk. Mount a persistent volume and set <code>SCRAPER_LOG_DIR</code> to that path (see README) so logs survive restarts and the report shows data.</p>';
+          return;
+        }
         var rows = list.map(function (s) {
           return '<tr><td>' + escapeHtml(s.source) + '</td><td>' + (s.runs ?? '-') + '</td><td>' + (s.success_rate_pct ?? '-') + '%</td><td>' + (s.total_brands ?? '-') + '</td><td>' + (s.blocked_count ?? '-') + '</td><td>' + escapeHtml((s.last_error || '-')) + '</td></tr>';
         }).join('');

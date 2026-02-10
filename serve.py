@@ -17,7 +17,7 @@ from src.reliability import get_reliability_report
 from src.root_page import render as render_root_page, render_logs_page, render_report_page
 from src.scraper import LAST_SCRAPE_STATS, run_pilot_sync
 from src.schemas import payload_for_n8n
-from src.scrape_logger import LOG_DIR, log_run_end, log_run_start
+from src.scrape_logger import LOG_DIR, log_run_end, log_run_start, RETAILER_STATUS_FILE
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 load_dotenv(PROJECT_ROOT / ".env")
@@ -387,6 +387,24 @@ def logs():
 def reports_page():
     """Full-page reliability report with period filter (today / 7 / 30 days)."""
     return Response(render_report_page(request.url_root), mimetype="text/html; charset=utf-8")
+
+
+@app.route("/reports/retailer-status", methods=["GET"])
+def retailer_status():
+    """Lightweight per-retailer execution status for operational monitoring (last run, success/failure, brand count, error)."""
+    try:
+        if not RETAILER_STATUS_FILE.exists():
+            return jsonify({"ok": True, "retailers": {}, "last_updated": None}), 200
+        with open(RETAILER_STATUS_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+        retailers = data.get("retailers") if isinstance(data.get("retailers"), dict) else {}
+        return jsonify({
+            "ok": True,
+            "retailers": retailers,
+            "last_updated": data.get("last_updated"),
+        }), 200
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e), "retailers": {}, "last_updated": None}), 500
 
 
 @app.route("/reports/logs", methods=["GET"])
