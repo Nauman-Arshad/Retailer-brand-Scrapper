@@ -108,9 +108,9 @@ ROOT_HTML = """<!DOCTYPE html>
         <p><strong>Use sandbox when testing</strong> to avoid accidental large production runs or writing to live sheets.</p>
       </div>
       <div class="card">
-        <h3>Workflows: batch vs per-item</h3>
-        <p><strong>Default — batch:</strong> Call <code>POST /scrape-multiple</code> with all retailers in one request. The server runs them with internal concurrency. Prefer this for scheduled runs.</p>
-        <p><strong>Fallback — per-item:</strong> If the batch request times out (<code>partial_timeout: true</code>) or fails, the workflow can fall back to calling <code>POST /scrape</code> once per retailer in a loop. Slower but each retailer completes independently.</p>
+        <h3>Workflows: single retailer vs bulk</h3>
+        <p><strong>Primary — single retailer (real-time):</strong> Use <code>POST /scrape</code> with your gold sheet trigger. When a new retailer is added to the sheet, the workflow runs the scraper for that retailer and writes all brands to the result sheet.</p>
+        <p><strong>Bulk — multiple retailers:</strong> Use <code>POST /scrape-multiple</code> when you need data for many retailers quickly (e.g. first-time backfill or all retailers at once). The server runs them with internal concurrency. If the batch times out (<code>partial_timeout: true</code>) or fails, fall back to <code>POST /scrape</code> once per retailer in a loop.</p>
       </div>
       <div class="card">
         <h3>Noise words & phrases</h3>

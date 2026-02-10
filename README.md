@@ -46,8 +46,8 @@ curl -s -X POST http://localhost:5000/scrape-multiple \
 Use `max_brands_per_retailer` for a limit per retailer. Do not use `max_brands` for multiple if you want N brands each — `max_brands` caps the total across all retailers.
 
 **Workflows (n8n)**  
-- **Default — batch:** Use **POST /scrape-multiple** with all retailers in one request. The server runs them with internal concurrency and returns one combined payload. Prefer this for scheduled runs.  
-- **Fallback — per-item:** If the batch request times out (response includes `partial_timeout: true` or the request fails), the workflow can fall back to calling **POST /scrape** once per retailer in a loop. Slower but avoids losing the whole run; each retailer completes independently.
+- **Primary — single retailer (real-time):** Use **POST /scrape** with your gold sheet trigger. Whenever a new retailer is added to the sheet, the workflow runs the scraper for that retailer and writes all brands to the result sheet. This is the main, real-time flow.  
+- **Bulk — multiple retailers:** Use **POST /scrape-multiple** when you need to grab data quickly for many retailers (e.g. first-time backfill or “we need data for all retailers”). The server runs them with internal concurrency. If the batch times out (`partial_timeout: true`) or fails, fall back to calling **POST /scrape** once per retailer in a loop.
 
 **Pagination (n8n)**  
 You send the same POST body as before (e.g. one `brand_list_url`). The server automatically follows “next” links on the site (e.g. page 2, 3…) and returns one combined list of brands. No extra parameters or loops in n8n. Limit how far it goes with `max_brands` or server env `SCRAPER_MAX_PAGES` (default 10 pages per URL).
@@ -69,9 +69,9 @@ Send `"environment": "sandbox"` in the POST body for test runs (n8n can route to
 
 ## Production (Fly.io)
 
-On Fly.io the app filesystem is **ephemeral**: logs are lost when the machine restarts, so the reliability report stays empty. To persist logs and fix the report:
+On Fly.io the app filesystem is **ephemeral**: logs are lost when the machine restarts, so the reliability report can stay empty. To persist logs:
 
-1. Create a volume in your app’s region (e.g. `sin`):  
-   `fly volumes create scraper_logs -r sin`
-2. Deploy. The repo’s `fly.toml` already mounts that volume at `/data/logs` and sets `SCRAPER_LOG_DIR=/data/logs`, so scrape logs and retailer status are written there and survive restarts.
-3. After the next scrape run, the report at `/reports` will show data. If you already had a volume with a different name, add a `[mounts]` section and `SCRAPER_LOG_DIR` in `fly.toml` to match your volume path.
+1. **Deploy first** (no volume required): `fly deploy` works with the default `fly.toml`. Logs go to ephemeral disk until you add a volume.
+2. **Create a volume** in your app’s region (e.g. `sin`):  
+   `fly volumes create scraper_logs -r sin -n 1`
+3. **Enable persistent logs:** In `fly.toml`, uncomment the `[mounts]` block and the `SCRAPER_LOG_DIR = '/data/logs'` line in `[env]`, then run `fly deploy` again. Scrape logs and retailer status will then be stored on the volume and the report at `/reports` will show data after the next scrape run.
