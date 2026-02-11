@@ -24,7 +24,14 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 app = Flask(__name__)
 
-SERVER_TIMEOUT = 115
+def _server_timeout_seconds() -> int:
+    """Server-side scrape timeout (single or batch). Configurable via SCRAPER_SERVER_TIMEOUT (default 200)."""
+    try:
+        v = int(os.environ.get("SCRAPER_SERVER_TIMEOUT", "200"))
+        return max(60, min(600, v))  # clamp 1–10 min
+    except (TypeError, ValueError):
+        return 200
+
 ENV_SANDBOX = "sandbox"
 ENV_PRODUCTION = "production"
 
@@ -103,7 +110,7 @@ def _run_scraper(
             progress_callback=_progress,
         )
         try:
-            records = future.result(timeout=SERVER_TIMEOUT)
+            records = future.result(timeout=_server_timeout_seconds())
         except concurrent.futures.TimeoutError:
             timed_out = True
             records = list(shared_records)

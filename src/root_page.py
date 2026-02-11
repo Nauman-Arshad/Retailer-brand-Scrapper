@@ -65,10 +65,6 @@ ROOT_HTML = """<!DOCTYPE html>
     <section>
       <h2>APIs</h2>
       <div class="card">
-        <h3><span class="method get">GET</span> <code>{base}/</code></h3>
-        <p>This page. Service info and documentation.</p>
-      </div>
-      <div class="card">
         <h3><span class="method get">GET</span> <code>{base}/health</code></h3>
         <p>Health check. Returns <code>{"status": "ok"}</code>.</p>
       </div>
@@ -285,8 +281,11 @@ LOGS_PAGE_HTML = """<!DOCTYPE html>
 
 
 def render(base_url: str) -> str:
-    """Return full HTML for the root page with base_url substituted."""
-    return ROOT_HTML.replace("{base}", base_url.rstrip("/"))
+    """Return full HTML for the root page with base_url substituted. Normalizes to https for display."""
+    base = base_url.rstrip("/")
+    if base.startswith("http://"):
+        base = "https://" + base[7:]
+    return ROOT_HTML.replace("{base}", base)
 
 
 def render_report_page(base_url: str) -> str:

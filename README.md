@@ -65,7 +65,7 @@ Send `"environment": "sandbox"` in the POST body for test runs (n8n can route to
 ## Config
 
 - `config/retailers.csv` — optional; columns include `Retailer Name`, `Retailer_brand_list_url`, `Priority`, `Status`. Used by `run_pilot.py`.
-- `.env` — `N8N_WEBHOOK_URL`, optional `PORT`, `SCRAPER_USER_AGENT`, `SCRAPE_DELAY_MIN` / `SCRAPE_DELAY_MAX`, `PROXY_SERVER`, `SCRAPER_CONCURRENCY` (3), `SCRAPER_RETRY_BASE` / `SCRAPER_RETRY_CAP`, `SCRAPER_GATHER_CHUNK` (200), `SCRAPER_PAGE_TIMEOUT_MS`, `SCRAPER_BLOCK_CSS`, `SCRAPER_FAST_LOAD`, `SCRAPER_MAX_PAGES` (default 10; max pagination pages per URL), `SCRAPER_LOG_DIR` (optional; use for persistent logs on Fly.io).
+- `.env` — `N8N_WEBHOOK_URL`, optional `PORT`, `SCRAPER_USER_AGENT`, `SCRAPE_DELAY_MIN` / `SCRAPE_DELAY_MAX`, `PROXY_SERVER`, `SCRAPER_CONCURRENCY` (3), `SCRAPER_RETRY_BASE` / `SCRAPER_RETRY_CAP`, `SCRAPER_GATHER_CHUNK` (200), `SCRAPER_PAGE_TIMEOUT_MS`, `SCRAPER_BLOCK_CSS`, `SCRAPER_FAST_LOAD`, `SCRAPER_MAX_PAGES` (default 10; max pagination pages per URL), `SCRAPER_LOG_DIR` (optional; use for persistent logs on Fly.io), `SCRAPER_SERVER_TIMEOUT` (seconds to wait for scrape before returning partial; default 200, range 60–600).
 
 ## Production (Fly.io)
 
