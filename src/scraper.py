@@ -463,6 +463,10 @@ async def run_pilot(
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
+            "--disable-software-rasterizer",
+            "--disable-extensions",
+            "--no-first-run",
+            "--no-zygote",
         ]
 
         browser = await p.chromium.launch(**launch_kwargs)

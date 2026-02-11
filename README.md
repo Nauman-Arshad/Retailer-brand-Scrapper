@@ -75,3 +75,11 @@ On Fly.io the app filesystem is **ephemeral**: logs are lost when the machine re
 2. **Create a volume** in your app’s region (e.g. `sin`):  
    `fly volumes create scraper_logs -r sin -n 1`
 3. **Enable persistent logs:** In `fly.toml`, uncomment the `[mounts]` block and the `SCRAPER_LOG_DIR = '/data/logs'` line in `[env]`, then run `fly deploy` again. Scrape logs and retailer status will then be stored on the volume and the report at `/reports` will show data after the next scrape run.
+
+### Fly.io: scraper works locally (e.g. with ngrok) but not on Fly
+
+- **Cold start** — With `min_machines_running = 0`, the first request after idle wakes the machine (often 30–60s). The client (n8n) can time out. Increase the HTTP timeout in n8n to at least 180s, or set `min_machines_running = 1` in `fly.toml` to keep one machine always on.
+- **Server timeout** — The app has a 200s default (`SCRAPER_SERVER_TIMEOUT`). If the scrape still hits "Server timeout before any brands returned", set `SCRAPER_SERVER_TIMEOUT = '300'` (or higher) in `fly.toml` under `[env]`.
+- **Memory** — Chromium needs enough RAM. If the scrape fails or the process is killed, increase the VM: in `fly.toml` set `memory_mb = 2048` under `[[vm]]` (and run `fly scale memory 2048` if you use the CLI).
+- **Logs** — Check what failed: `fly logs` (or the Fly dashboard). Look for Python tracebacks, Chromium launch errors, or out-of-memory (OOM) kills.
+- **Health check** — Confirm the app is up: `curl -s https://retailer-scraper.fly.dev/health`. If that works but POST /scrape fails, the issue is usually cold start, server timeout, or memory during the scrape.
